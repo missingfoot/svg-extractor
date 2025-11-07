@@ -1,11 +1,13 @@
 # SVG Extractor
 
-A Python tool to extract SVG elements from HTML markup. Perfect for processing large blocks of HTML and extracting all embedded SVG graphics.
+A Python tool to extract SVG elements from HTML markup. Perfect for processing large blocks of HTML and extracting all embedded SVG graphics with intelligent context detection.
 
 ## Features
 
 - 🎯 Extract all SVG elements from HTML markup
-- 💾 Save SVGs to individual files
+- 🧠 **Smart Context Detection** - Automatically names SVGs based on their usage (buttons, links, labels)
+- 💾 Save SVGs to individual files with meaningful names
+- 📋 **Code Blocks Export** - Generate a list of SVG code blocks with descriptive comments
 - 📊 Generate detailed reports about extracted SVGs
 - 📝 Export SVG information as JSON
 - 🔍 View SVG statistics (dimensions, paths, groups, etc.)
@@ -36,14 +38,66 @@ This will:
 - Save them to the `output/` directory as `svg_001.svg`, `svg_002.svg`, etc.
 - Print a summary of extracted SVGs
 
+### 🆕 Context-Aware Extraction (Recommended!)
+
+Extract SVGs with intelligent naming based on their usage:
+
+```bash
+python svg_extractor.py input.html --with-context
+```
+
+This will:
+- Analyze each SVG's parent elements (buttons, links, etc.)
+- Extract button text, aria-labels, and other contextual information
+- Save files with meaningful names like `search.svg`, `home.svg`, `patients.svg`
+- Add HTML comments describing the SVG's purpose
+
+**Example Output:**
+```
+SVG #1: search
+  Purpose: Used in button labeled "Search"
+  Parent: button
+  Text: "Search"
+
+Saved: output/search.svg
+```
+
+### 🆕 Code Blocks Export
+
+Export all SVGs as a single text file with descriptive comments:
+
+```bash
+python svg_extractor.py input.html --code-blocks icons.txt
+```
+
+**Output Format:**
+```
+# Icon 1: search
+# Purpose: Used in button labeled "Search"
+
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
+  <!-- SVG content -->
+</svg>
+
+--------------------------------------------------------------------------------
+
+# Icon 2: home
+# Purpose: Used in link labeled "Home" linking to /dashboard
+# Attributes: href=/dashboard
+
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+  <!-- SVG content -->
+</svg>
+```
+
 ### Advanced Options
 
 **Specify output directory:**
 ```bash
-python svg_extractor.py input.html -o my_svgs
+python svg_extractor.py input.html -o my_svgs --with-context
 ```
 
-**Custom filename prefix:**
+**Custom filename prefix (without context):**
 ```bash
 python svg_extractor.py input.html -p icon
 # Creates: icon_001.svg, icon_002.svg, etc.
@@ -51,12 +105,12 @@ python svg_extractor.py input.html -p icon
 
 **Export as JSON:**
 ```bash
-python svg_extractor.py input.html --json output.json
+python svg_extractor.py input.html --json output.json --with-context
 ```
 
 **Summary only (don't save files):**
 ```bash
-python svg_extractor.py input.html --summary-only
+python svg_extractor.py input.html --summary-only --with-context
 ```
 
 **Quiet mode:**
@@ -64,9 +118,25 @@ python svg_extractor.py input.html --summary-only
 python svg_extractor.py input.html --quiet
 ```
 
-## Example
+## How Context Detection Works
 
-Given an HTML file with embedded SVGs:
+When using `--with-context`, the tool intelligently analyzes each SVG's surrounding HTML to determine its purpose:
+
+1. **Checks Parent Elements**: Looks at buttons, links, and other parent containers
+2. **Extracts Text Content**: Finds button labels, link text, and adjacent text
+3. **Reads Attributes**: Checks `aria-label`, `title`, `data-*` attributes
+4. **Generates Names**: Creates clean, descriptive filenames from the context
+
+**What it looks for:**
+- Button text: `<button>Search</button>` → `search.svg`
+- Link text: `<a href="/home">Home</a>` → `home.svg`
+- Aria labels: `aria-label="Close dialog"` → `close_dialog.svg`
+- Data attributes: `data-sidebar-item="settings"` → `settings.svg`
+- Adjacent text: Nearby `<span>` or `<label>` elements
+
+## Examples
+
+### Example 1: Basic Extraction
 
 ```bash
 python svg_extractor.py test_input.html
@@ -86,27 +156,52 @@ SVG #1:
   Paths: 2
   Groups: 1
 
-SVG #2:
-  Dimensions: 16x16
-  ViewBox: 0 0 16 16
-  Paths: 1
-  Groups: 1
-
-SVG #3:
-  Dimensions: 24x24
-  ViewBox: 0 0 24 24
-  Paths: 1
-  Groups: 0
-
 Saved 3 SVG files to 'output/' directory
   - output/svg_001.svg
   - output/svg_002.svg
   - output/svg_003.svg
 ```
 
+### Example 2: Context-Aware Extraction
+
+```bash
+python svg_extractor.py test_input.html --with-context
+```
+
+Output:
+```
+============================================================
+SVG EXTRACTION SUMMARY (WITH CONTEXT)
+============================================================
+Total SVGs found: 3
+============================================================
+
+SVG #1: search
+  Purpose: Used in button labeled "Search"
+  Parent: button
+  Text: "Search"
+
+SVG #2: home
+  Purpose: Used in link labeled "Home" linking to /dashboard
+  Parent: link
+  Text: "Home"
+
+SVG #3: patients
+  Purpose: Used in link labeled "Patients" linking to /patients
+  Parent: link
+  Text: "Patients"
+
+Saved 3 SVG files with contextual names to 'output/'
+  - output/search.svg
+  - output/home.svg
+  - output/patients.svg
+```
+
 ## Python API
 
 You can also use the SVGExtractor class in your Python code:
+
+### Basic Usage
 
 ```python
 from svg_extractor import SVGExtractor
@@ -130,6 +225,38 @@ for info in svg_info:
 # Save to files
 saved_files = extractor.save_svgs('output', 'svg')
 print(f"Saved: {saved_files}")
+```
+
+### Context-Aware Extraction
+
+```python
+from svg_extractor import SVGExtractor
+
+# Read HTML content
+with open('input.html', 'r') as f:
+    html_content = f.read()
+
+# Create extractor
+extractor = SVGExtractor(html_content)
+
+# Extract with context
+svg_contexts = extractor.extract_svgs_with_context()
+
+# Print context information
+for item in svg_contexts:
+    context = item['context']
+    print(f"Name: {context['name']}")
+    print(f"Purpose: {context['purpose']}")
+    print(f"Parent: {context['parent_type']}")
+    print()
+
+# Save with contextual names
+saved_files = extractor.save_svgs_with_context('output')
+print(f"Saved: {saved_files}")
+
+# Export as code blocks
+output_text = extractor.export_as_code_blocks('icons.txt')
+print("Exported code blocks")
 ```
 
 ## Output Format
