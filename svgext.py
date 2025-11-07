@@ -4,6 +4,7 @@ SVG Extractor - Extract all SVG elements from HTML markup
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -79,10 +80,30 @@ class SVGExtractor:
             # Check for button with text
             if current.name == 'button':
                 context['parent_type'] = 'button'
-                # Get button text (excluding SVG)
-                button_text = current.get_text(separator=' ', strip=True)
-                if button_text:
-                    context['button_text'] = button_text
+                # Get button text (excluding SVG and desc tags)
+                # Find direct text from span/label children, not from SVG
+                for child in current.find_all(['span', 'label'], recursive=False):
+                    text = child.get_text(strip=True)
+                    if text and len(text) > 0 and len(text) < 50:
+                        context['button_text'] = text
+                        break
+                # Fallback to getting text but excluding SVG children
+                if not context['button_text']:
+                    # Get all text nodes but skip svg and desc tags
+                    texts = []
+                    for child in current.children:
+                        if hasattr(child, 'name') and child.name in ['svg', 'desc']:
+                            continue
+                        if hasattr(child, 'get_text'):
+                            text = child.get_text(strip=True)
+                            if text:
+                                texts.append(text)
+                        elif isinstance(child, str):
+                            text = child.strip()
+                            if text:
+                                texts.append(text)
+                    if texts:
+                        context['button_text'] = ' '.join(texts)[:50]
                 # Check for aria-label on button
                 if current.get('aria-label'):
                     context['aria_label'] = current.get('aria-label')
@@ -91,9 +112,28 @@ class SVGExtractor:
             # Check for link with text
             if current.name == 'a':
                 context['parent_type'] = 'link'
-                link_text = current.get_text(separator=' ', strip=True)
-                if link_text:
-                    context['button_text'] = link_text
+                # Find direct text from span/label children
+                for child in current.find_all(['span', 'label'], recursive=False):
+                    text = child.get_text(strip=True)
+                    if text and len(text) > 0 and len(text) < 50:
+                        context['button_text'] = text
+                        break
+                # Fallback to getting text but excluding SVG children
+                if not context['button_text']:
+                    texts = []
+                    for child in current.children:
+                        if hasattr(child, 'name') and child.name in ['svg', 'desc']:
+                            continue
+                        if hasattr(child, 'get_text'):
+                            text = child.get_text(strip=True)
+                            if text:
+                                texts.append(text)
+                        elif isinstance(child, str):
+                            text = child.strip()
+                            if text:
+                                texts.append(text)
+                    if texts:
+                        context['button_text'] = ' '.join(texts)[:50]
                 if current.get('aria-label'):
                     context['aria_label'] = current.get('aria-label')
                 if current.get('href'):
@@ -128,41 +168,121 @@ class SVGExtractor:
 
         return context
 
+    def _is_element_hidden(self, element):
+        """
+        Check if an element or any of its parents is hidden
+
+        Args:
+            element: BeautifulSoup element to check
+
+        Returns:
+            bool: True if element is hidden, False otherwise
+        """
+        current = element
+        max_levels = 10  # Check up to 10 parent levels
+        levels_checked = 0
+
+        while current and levels_checked < max_levels:
+            # Check for hidden class
+            classes = current.get('class', [])
+            if 'hidden' in classes:
+                return True
+
+            # Check for display: none or visibility: hidden in style
+            style = current.get('style', '')
+            if 'display:none' in style.replace(' ', '') or 'display: none' in style:
+                return True
+            if 'visibility:hidden' in style.replace(' ', '') or 'visibility: hidden' in style:
+                return True
+
+            current = current.parent
+            levels_checked += 1
+
+        return False
+
+    def _normalize_svg_for_comparison(self, svg_element):
+        """
+        Normalize SVG for comparison (remove variable attributes like IDs)
+
+        Args:
+            svg_element: BeautifulSoup SVG element
+
+        Returns:
+            str: Normalized SVG content for comparison
+        """
+        # Clone the SVG to avoid modifying original
+        svg_str = str(svg_element)
+
+        # Remove clip-path IDs and references that might vary
+        svg_str = re.sub(r'clip-path="url\(#[^)]+\)"', '', svg_str)
+        svg_str = re.sub(r'id="[^"]*"', '', svg_str)
+        svg_str = re.sub(r'aria-labelledby="[^"]*"', '', svg_str)
+
+        # Normalize whitespace
+        svg_str = re.sub(r'\s+', ' ', svg_str)
+
+        return svg_str.strip()
+
+    def _get_svg_hash(self, svg_element):
+        """
+        Generate a hash for an SVG element based on its normalized content
+
+        Args:
+            svg_element: BeautifulSoup SVG element
+
+        Returns:
+            str: MD5 hash of normalized SVG content
+        """
+        normalized = self._normalize_svg_for_comparison(svg_element)
+        return hashlib.md5(normalized.encode('utf-8')).hexdigest()
+
     def _generate_name_from_context(self, context):
         """Generate a descriptive name from context"""
+        max_name_length = 30  # Maximum length for generated names
+
         # Priority order for naming
         if context['button_text']:
             # Clean up button text
             text = context['button_text'].strip()
+            # Limit length before processing
+            text = text[:max_name_length]
             # Remove extra whitespace
             text = re.sub(r'\s+', '_', text)
             # Remove special characters
             text = re.sub(r'[^\w\s-]', '', text)
             # Convert to lowercase
             text = text.lower()
-            return text
+            # Ensure it's not empty after cleaning
+            if text:
+                return text
 
         if context['aria_label']:
-            text = re.sub(r'\s+', '_', context['aria_label'].strip().lower())
+            text = context['aria_label'].strip()[:max_name_length]
+            text = re.sub(r'\s+', '_', text.lower())
             text = re.sub(r'[^\w\s-]', '', text)
-            return text
+            if text:
+                return text
 
         if context['title']:
-            text = re.sub(r'\s+', '_', context['title'].strip().lower())
+            text = context['title'].strip()[:max_name_length]
+            text = re.sub(r'\s+', '_', text.lower())
             text = re.sub(r'[^\w\s-]', '', text)
-            return text
+            if text:
+                return text
 
         # Check data attributes for naming hints
         if 'data-sidebar-item' in context['data_attrs']:
-            return context['data_attrs']['data-sidebar-item']
+            return context['data_attrs']['data-sidebar-item'][:max_name_length]
 
         if 'data-item-name' in context['data_attrs']:
-            return context['data_attrs']['data-item-name']
+            return context['data_attrs']['data-item-name'][:max_name_length]
 
         if context['nearby_text']:
-            text = re.sub(r'\s+', '_', context['nearby_text'].strip().lower())
+            text = context['nearby_text'].strip()[:max_name_length]
+            text = re.sub(r'\s+', '_', text.lower())
             text = re.sub(r'[^\w\s-]', '', text)
-            return text
+            if text:
+                return text
 
         return 'unnamed_icon'
 
@@ -188,17 +308,33 @@ class SVGExtractor:
 
         return "Icon element"
 
-    def extract_svgs_with_context(self):
+    def extract_svgs_with_context(self, skip_hidden=True, deduplicate=True):
         """
         Extract SVG elements with contextual information
+
+        Args:
+            skip_hidden (bool): Skip SVGs in hidden elements (default: True)
+            deduplicate (bool): Remove duplicate SVGs based on content (default: True)
 
         Returns:
             list: List of tuples (svg_string, context_dict)
         """
         svg_elements = self.soup.find_all('svg')
         self.svg_contexts = []
+        seen_hashes = set()
 
         for svg in svg_elements:
+            # Skip hidden elements if requested
+            if skip_hidden and self._is_element_hidden(svg):
+                continue
+
+            # Deduplicate if requested
+            if deduplicate:
+                svg_hash = self._get_svg_hash(svg)
+                if svg_hash in seen_hashes:
+                    continue
+                seen_hashes.add(svg_hash)
+
             context = self._extract_context_from_element(svg)
             self.svg_contexts.append({
                 'svg': str(svg),
