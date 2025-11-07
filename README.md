@@ -8,6 +8,7 @@ A Python tool to extract SVG elements from HTML markup. Perfect for processing l
 - 🧠 **Smart Context Detection** - Automatically names SVGs based on their usage (buttons, links, labels)
 - 💾 Save SVGs to individual files with meaningful names
 - 📋 **Code Blocks Export** - Generate a list of SVG code blocks with descriptive comments
+- ⚡ **Inline Processing** - Paste HTML directly or pipe from clipboard (no files needed!)
 - 📊 Generate detailed reports about extracted SVGs
 - 📝 Export SVG information as JSON
 - 🔍 View SVG statistics (dimensions, paths, groups, etc.)
@@ -27,7 +28,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-Extract SVGs from an HTML file:
+**Extract from a file:**
 
 ```bash
 python svg_extractor.py input.html
@@ -37,6 +38,38 @@ This will:
 - Extract all SVG elements
 - Save them to the `output/` directory as `svg_001.svg`, `svg_002.svg`, etc.
 - Print a summary of extracted SVGs
+
+**🆕 Extract from inline HTML (no file needed!):**
+
+Simply paste your HTML and press `Ctrl+D` (Linux/Mac) or `Ctrl+Z` then `Enter` (Windows):
+
+```bash
+python svg_extractor.py --with-context
+# Paste your HTML markup here
+# Press Ctrl+D when done
+```
+
+**Or pipe HTML directly:**
+
+```bash
+# Using echo
+echo '<button>Search<svg>...</svg></button>' | python svg_extractor.py --with-context
+
+# Using here-doc (multiline)
+python svg_extractor.py --with-context << 'EOF'
+<div>
+  <button>Download
+    <svg width="24" height="24">...</svg>
+  </button>
+</div>
+EOF
+
+# Copy from clipboard (macOS)
+pbpaste | python svg_extractor.py --code-blocks icons.txt
+
+# Copy from clipboard (Linux with xclip)
+xclip -o | python svg_extractor.py --with-context
+```
 
 ### 🆕 Context-Aware Extraction (Recommended!)
 

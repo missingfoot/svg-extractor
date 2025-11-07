@@ -420,6 +420,22 @@ Examples:
   # Export as code blocks with comments
   python svg_extractor.py input.html --code-blocks output.txt
 
+  # Read from stdin (paste HTML and press Ctrl+D)
+  python svg_extractor.py --with-context
+
+  # Pipe HTML content directly
+  echo '<div><svg>...</svg></div>' | python svg_extractor.py --with-context
+
+  # Use here-string (bash)
+  python svg_extractor.py --code-blocks output.txt <<< '<html>...</html>'
+
+  # Use here-doc for multiline
+  python svg_extractor.py --with-context << 'EOF'
+  <div>
+    <button>Search<svg>...</svg></button>
+  </div>
+  EOF
+
   # Extract and save to directory
   python svg_extractor.py input.html -o my_svgs --with-context
 
@@ -433,13 +449,20 @@ Examples:
 
     parser.add_argument(
         'input_file',
-        help='Input HTML file to parse'
+        nargs='?',
+        help='Input HTML file to parse (omit to read from stdin)'
     )
 
     parser.add_argument(
         '-o', '--output-dir',
         default='output',
         help='Output directory for SVG files (default: output)'
+    )
+
+    parser.add_argument(
+        '--stdin',
+        action='store_true',
+        help='Read HTML content from stdin instead of file'
     )
 
     parser.add_argument(
@@ -479,16 +502,31 @@ Examples:
 
     args = parser.parse_args()
 
-    # Read input file
-    try:
-        with open(args.input_file, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-    except FileNotFoundError:
-        print(f"Error: File '{args.input_file}' not found", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error reading file: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Read input - either from file or stdin
+    if args.stdin or not args.input_file:
+        # Read from stdin
+        if not args.quiet:
+            if sys.stdin.isatty():
+                print("Reading HTML from stdin... (Paste content and press Ctrl+D when done)", file=sys.stderr)
+        try:
+            html_content = sys.stdin.read()
+            if not html_content.strip():
+                print("Error: No input provided", file=sys.stderr)
+                sys.exit(1)
+        except Exception as e:
+            print(f"Error reading from stdin: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Read from file
+        try:
+            with open(args.input_file, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+        except FileNotFoundError:
+            print(f"Error: File '{args.input_file}' not found", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error reading file: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Extract SVGs
     extractor = SVGExtractor(html_content)
