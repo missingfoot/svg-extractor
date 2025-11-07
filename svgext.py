@@ -39,6 +39,38 @@ class SVGExtractor:
         self.svgs = [str(svg) for svg in svg_elements]
         return self.svgs
 
+    def _get_text_excluding_svg(self, element):
+        """
+        Extract text from an element while excluding SVG elements and their contents
+
+        Args:
+            element: BeautifulSoup element to extract text from
+
+        Returns:
+            str: Extracted text with SVG content excluded
+        """
+        texts = []
+
+        # Recursively walk through all text nodes
+        for text_node in element.find_all(string=True, recursive=True):
+            # Check if this text node is inside an svg element
+            parent = text_node.parent
+            inside_svg = False
+
+            while parent:
+                if hasattr(parent, 'name') and parent.name == 'svg':
+                    inside_svg = True
+                    break
+                parent = parent.parent
+
+            # Only include text that's not inside an svg
+            if not inside_svg:
+                text = text_node.strip()
+                if text:
+                    texts.append(text)
+
+        return ' '.join(texts)
+
     def _extract_context_from_element(self, svg_element):
         """
         Extract contextual information from an SVG element and its parents
@@ -80,30 +112,10 @@ class SVGExtractor:
             # Check for button with text
             if current.name == 'button':
                 context['parent_type'] = 'button'
-                # Get button text (excluding SVG and desc tags)
-                # Find direct text from span/label children, not from SVG
-                for child in current.find_all(['span', 'label'], recursive=False):
-                    text = child.get_text(strip=True)
-                    if text and len(text) > 0 and len(text) < 50:
-                        context['button_text'] = text
-                        break
-                # Fallback to getting text but excluding SVG children
-                if not context['button_text']:
-                    # Get all text nodes but skip svg and desc tags
-                    texts = []
-                    for child in current.children:
-                        if hasattr(child, 'name') and child.name in ['svg', 'desc']:
-                            continue
-                        if hasattr(child, 'get_text'):
-                            text = child.get_text(strip=True)
-                            if text:
-                                texts.append(text)
-                        elif isinstance(child, str):
-                            text = child.strip()
-                            if text:
-                                texts.append(text)
-                    if texts:
-                        context['button_text'] = ' '.join(texts)[:50]
+                # Get button text (excluding SVG elements and their contents)
+                text = self._get_text_excluding_svg(current)
+                if text and len(text) > 0 and len(text) < 50:
+                    context['button_text'] = text
                 # Check for aria-label on button
                 if current.get('aria-label'):
                     context['aria_label'] = current.get('aria-label')
@@ -112,28 +124,10 @@ class SVGExtractor:
             # Check for link with text
             if current.name == 'a':
                 context['parent_type'] = 'link'
-                # Find direct text from span/label children
-                for child in current.find_all(['span', 'label'], recursive=False):
-                    text = child.get_text(strip=True)
-                    if text and len(text) > 0 and len(text) < 50:
-                        context['button_text'] = text
-                        break
-                # Fallback to getting text but excluding SVG children
-                if not context['button_text']:
-                    texts = []
-                    for child in current.children:
-                        if hasattr(child, 'name') and child.name in ['svg', 'desc']:
-                            continue
-                        if hasattr(child, 'get_text'):
-                            text = child.get_text(strip=True)
-                            if text:
-                                texts.append(text)
-                        elif isinstance(child, str):
-                            text = child.strip()
-                            if text:
-                                texts.append(text)
-                    if texts:
-                        context['button_text'] = ' '.join(texts)[:50]
+                # Get link text (excluding SVG elements and their contents)
+                text = self._get_text_excluding_svg(current)
+                if text and len(text) > 0 and len(text) < 50:
+                    context['button_text'] = text
                 if current.get('aria-label'):
                     context['aria_label'] = current.get('aria-label')
                 if current.get('href'):
@@ -154,7 +148,7 @@ class SVGExtractor:
             # Look for sibling text elements
             if not context['nearby_text']:
                 for sibling in current.find_all(['span', 'label', 'p', 'div'], recursive=False):
-                    text = sibling.get_text(strip=True)
+                    text = self._get_text_excluding_svg(sibling)
                     if text and len(text) > 0 and len(text) < 50:
                         context['nearby_text'] = text
                         break
@@ -183,6 +177,10 @@ class SVGExtractor:
         levels_checked = 0
 
         while current and levels_checked < max_levels:
+            # Check if inside a template tag (template content is not rendered)
+            if hasattr(current, 'name') and current.name == 'template':
+                return True
+
             # Check for hidden class
             classes = current.get('class', [])
             if 'hidden' in classes:
