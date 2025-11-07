@@ -540,12 +540,45 @@ Advanced Examples:
     if args.inline or args.stdin or not args.input_file:
         # Read from stdin
         if not args.quiet and sys.stdin.isatty():
-            print("Paste your HTML and press Ctrl+D when done:", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            print("Paste your HTML below", file=sys.stderr)
+            print("Press Enter twice (empty line) when done", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+
         try:
-            html_content = sys.stdin.read()
+            lines = []
+            empty_line_count = 0
+
+            # Check if stdin is being piped (not interactive)
+            if not sys.stdin.isatty():
+                # Piped input - read everything
+                html_content = sys.stdin.read()
+            else:
+                # Interactive mode - read until double Enter
+                while True:
+                    try:
+                        line = input()
+                        if line.strip() == '':
+                            empty_line_count += 1
+                            if empty_line_count >= 2:
+                                # Two empty lines in a row - done
+                                break
+                            lines.append(line)
+                        else:
+                            empty_line_count = 0
+                            lines.append(line)
+                    except EOFError:
+                        # Ctrl+D or Ctrl+Z was pressed
+                        break
+
+                html_content = '\n'.join(lines)
+
             if not html_content.strip():
-                print("Error: No input provided", file=sys.stderr)
+                print("\nError: No input provided", file=sys.stderr)
                 sys.exit(1)
+        except KeyboardInterrupt:
+            print("\n\nCancelled by user", file=sys.stderr)
+            sys.exit(0)
         except Exception as e:
             print(f"Error reading from stdin: {e}", file=sys.stderr)
             sys.exit(1)

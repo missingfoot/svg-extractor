@@ -19,7 +19,8 @@ python svgext.py --inline --list
 Or shorter:
 ```bash
 python svgext.py --list
-# Then paste your HTML and press Ctrl+D
+# Paste your HTML
+# Press Enter twice (empty line) to submit
 ```
 
 ### 2. Read File → Extract as SVG Files
