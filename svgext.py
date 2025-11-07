@@ -71,6 +71,80 @@ class SVGExtractor:
 
         return ' '.join(texts)
 
+    def _detect_size(self, svg_element):
+        """
+        Detect the display size of an SVG element from CSS classes or inline styles
+
+        Args:
+            svg_element: BeautifulSoup SVG element
+
+        Returns:
+            str: Size description (e.g., "16×16px", "w-4 h-4", etc.) or None
+        """
+        # Tailwind size mapping (in pixels at default 1rem = 16px)
+        tailwind_sizes = {
+            '0': 0, '0.5': 2, '1': 4, '1.5': 6, '2': 8, '2.5': 10, '3': 12,
+            '3.5': 14, '4': 16, '5': 20, '6': 24, '7': 28, '8': 32, '9': 36,
+            '10': 40, '11': 44, '12': 48, '14': 56, '16': 64, '20': 80,
+            '24': 96, '28': 112, '32': 128, '36': 144, '40': 160, '44': 176,
+            '48': 192, '52': 208, '56': 224, '60': 240, '64': 256, '72': 288,
+            '80': 320, '96': 384
+        }
+
+        detected_size = None
+        width = None
+        height = None
+
+        # Check SVG's class attribute for Tailwind sizing
+        classes = svg_element.get('class', [])
+        if isinstance(classes, str):
+            classes = classes.split()
+
+        for cls in classes:
+            # Check for width classes (w-4, w-3, etc.)
+            if cls.startswith('w-') and cls[2:] in tailwind_sizes:
+                width = tailwind_sizes[cls[2:]]
+            # Check for height classes (h-4, h-3, etc.)
+            elif cls.startswith('h-') and cls[2:] in tailwind_sizes:
+                height = tailwind_sizes[cls[2:]]
+
+        # Check inline styles
+        style = svg_element.get('style', '')
+        if style:
+            import re
+            width_match = re.search(r'width:\s*(\d+)(?:px)?', style)
+            height_match = re.search(r'height:\s*(\d+)(?:px)?', style)
+            if width_match:
+                width = int(width_match.group(1))
+            if height_match:
+                height = int(height_match.group(1))
+
+        # Check width/height attributes
+        if not width and svg_element.get('width'):
+            try:
+                width = int(svg_element.get('width').replace('px', ''))
+            except (ValueError, AttributeError):
+                pass
+
+        if not height and svg_element.get('height'):
+            try:
+                height = int(svg_element.get('height').replace('px', ''))
+            except (ValueError, AttributeError):
+                pass
+
+        # Format the size description
+        if width and height:
+            if width == height:
+                detected_size = f"{width}×{width}px"
+            else:
+                detected_size = f"{width}×{height}px"
+        elif width:
+            detected_size = f"{width}px wide"
+        elif height:
+            detected_size = f"{height}px tall"
+
+        return detected_size
+
     def _extract_context_from_element(self, svg_element):
         """
         Extract contextual information from an SVG element and its parents
@@ -89,8 +163,12 @@ class SVGExtractor:
             'title': None,
             'data_attrs': {},
             'parent_type': None,
-            'nearby_text': None
+            'nearby_text': None,
+            'size': None
         }
+
+        # Detect size from CSS classes or attributes
+        context['size'] = self._detect_size(svg_element)
 
         # Check SVG's own attributes
         if svg_element.get('aria-label'):
@@ -427,6 +505,10 @@ class SVGExtractor:
             # Add comment header
             output_lines.append(f"# Icon {idx}: {context['name']}")
             output_lines.append(f"# Purpose: {context['purpose']}")
+
+            # Add size if detected
+            if context.get('size'):
+                output_lines.append(f"# Size: {context['size']}")
 
             # Add additional context if available
             if context.get('data_attrs'):
